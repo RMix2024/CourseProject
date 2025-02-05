@@ -1,3 +1,11 @@
+
+ /*   VaultWise - Personal Finance Tracker
+    -------------------------------------
+    Allows users to record financial transactions
+    Supports filtering, reporting, and data persistence via CSV
+    Designed for easy expansion (GUI, database integration)*/
+
+
 #include <iostream>
 #include <vector>
 #include "Transaction.h"
@@ -5,46 +13,126 @@
 #include "ReportGenerator.h"
 #include <ctime>
 #include <sstream>
-#include <limits>
+#include <limits>  // Required for clearing input buffer
 #include <cctype> // For std::toupper
-#include <iomanip> // Required for std::put_time
+#include <iomanip> 
+#include <fstream>  // Required for file handling
+#include <set>      // Required for std::set
+#include <string>   // Required for std::string
+#include <algorithm>  // Required for std::transform
 
 
+ //Displays the main menu to the user.
+ 
 void showMainMenu() {
-    std::cout << "\nMain Menu:" << std::endl;
-    std::cout << "1. Add Transaction" << std::endl;
-    std::cout << "2. View Transactions" << std::endl;
-    std::cout << "3. Generate Reports" << std::endl;
-    std::cout << "4. Delete" << std::endl;
-    std::cout << "5. Clear All Transactions" << std::endl;
-    std::cout << "6. Exit" << std::endl;
+    std::cout << "\n==============================\n";
+    std::cout << "       VAULTWISE MENU         \n";
+    std::cout << "==============================\n";
+    std::cout << "1. Add Transaction\n";
+    std::cout << "2. View Transactions\n";
+    std::cout << "3. Generate Reports\n";
+    std::cout << "4. Delete\n";
+    std::cout << "5. Clear All Transactions\n";
+    std::cout << "6. Exit\n";
+    std::cout << "==============================\n";
     std::cout << "Enter your choice: ";
 }
 
+
+ //Displays a list of transactions in a formatted table.
+ //Allows users to filter by category.
+ 
+
 void handleViewTransactions(const std::vector<Transaction>& transactions) {
     if (transactions.empty()) {
-        std::cout << "No transactions available." << std::endl;
+        std::cout << "No transactions available.\n";
         return;
     }
 
-    std::cout << "\nTransactions:\n";
-    for (size_t i = 0; i < transactions.size(); ++i) {
-        const auto& t = transactions[i];
-        std::cout << i + 1 << ". Date: " << t.getDate()
-            << ", Amount: $" << t.getAmount()
-            << ", Category: " << t.getCategory()
-            << ", Notes: " << t.getNotes() << std::endl;
+    // Extract unique categories for filtering (case-insensitive)
+    std::set<std::string> uniqueCategories;
+    for (const auto& t : transactions) {
+        std::string category = t.getCategory();
+        std::transform(category.begin(), category.end(), category.begin(), ::tolower); // Convert to lowercase
+        uniqueCategories.insert(category);
+    }
+
+    // Display available categories
+    std::cout << "\nAvailable Categories:\n";
+    for (const auto& category : uniqueCategories) {
+        std::cout << " - " << category << std::endl;
+    }
+
+    // Ask user for category filter
+    std::string filterCategory;
+    std::cout << "\nEnter category to filter transactions (or leave blank for all): ";
+    std::getline(std::cin, filterCategory);
+
+    // Convert user input to lowercase to match stored categories
+    std::transform(filterCategory.begin(), filterCategory.end(), filterCategory.begin(), ::tolower);
+
+    // Format table headers
+    std::cout << "\n-----------------------------------------------------\n";
+    std::cout << std::left
+        << std::setw(12) << "Date"
+        << std::setw(10) << "Amount"
+        << std::setw(15) << "Category"
+        << "Notes" << std::endl;
+    std::cout << "-----------------------------------------------------\n";
+
+    // Display transactions that match the filter (case-insensitive)
+    bool found = false;
+    for (const auto& t : transactions) {
+        std::string storedCategory = t.getCategory();
+        std::transform(storedCategory.begin(), storedCategory.end(), storedCategory.begin(), ::tolower);
+
+        if (filterCategory.empty() || storedCategory == filterCategory) {
+            std::cout << std::left
+                << std::setw(12) << t.getDate()
+                << std::setw(10) << std::fixed << std::setprecision(2) << t.getAmount()
+                << std::setw(15) << t.getCategory()
+                << t.getNotes() << std::endl;
+            found = true;
+        }
+    }
+
+    if (!found) {
+        std::cout << "No transactions found for the selected category.\n";
     }
 }
 
+
+
+/**
+ * Generates a summary of transactions within a specified date range.
+ * Allows users to filter by date before exporting reports.
+ */
 void handleGenerateReports(const std::vector<Transaction>& transactions) {
     if (transactions.empty()) {
-        std::cout << "No transactions to generate reports." << std::endl;
+        std::cout << "No transactions to generate reports.\n";
         return;
     }
 
+    // Get date range from the user
+    std::string startDate, endDate;
+    std::cout << "Enter start date (YYYY-MM-DD) or press Enter to skip: ";
+    std::getline(std::cin, startDate);
+    std::cout << "Enter end date (YYYY-MM-DD) or press Enter to skip: ";
+    std::getline(std::cin, endDate);
+
+    // Filter transactions by date range
+    std::vector<Transaction> filteredTransactions;
+    for (const auto& transaction : transactions) {
+        if ((!startDate.empty() && transaction.getDate() < startDate) ||
+            (!endDate.empty() && transaction.getDate() > endDate)) {
+            continue;  // Skip transactions outside the selected range
+        }
+        filteredTransactions.push_back(transaction);
+    }
+
+    // Save filtered transactions to a report file
     std::string reportFile = "report.csv";
-    saveReportToFile(transactions, reportFile);
+    saveReportToFile(filteredTransactions, reportFile);
     std::cout << "Report generated successfully: " << reportFile << std::endl;
 }
 
@@ -102,16 +190,28 @@ void handleClearAllTransactions(std::vector<Transaction>& transactions) {
     }
 
     char confirm;
-    std::cout << "Are you sure you want to clear all transactions? (y/n): ";
-    std::cin >> confirm;
+    while (true) {
+        std::cout << "Are you sure you want to clear all transactions? (y/n): ";
+        std::cin >> confirm;
+        confirm = std::tolower(confirm);
 
-    if (confirm == 'y' || confirm == 'Y') {
+        if (confirm == 'y' || confirm == 'n') {
+            break; // Valid input
+        }
+
+        std::cout << "Invalid input. Please enter 'y' for Yes or 'n' for No.\n";
+        std::cin.clear();
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Clear input buffer
+    }
+
+    if (confirm == 'y') {
         transactions.clear();
         std::cout << "All transactions have been cleared." << std::endl;
     }
     else {
         std::cout << "Clear operation canceled." << std::endl;
     }
+
 }
 
 
@@ -128,20 +228,36 @@ void handleAddTransaction(std::vector<Transaction>& transactions) {
     std::string currentDate = oss.str();
 
     // Get user input
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Clear input buffer
+   
     std::cout << "Enter transaction date (YYYY-MM-DD) [default: " << currentDate << "]: ";
     std::getline(std::cin, date);
-
     if (date.empty()) {
         date = currentDate; // Default to today's date
     }
 
-    std::cout << "Enter transaction amount: ";
-    std::cin >> amount;
+    // Validate amount input
+    while (true) {
+        std::cout << "Enter transaction amount: ";
+        std::cin >> amount;
+        if (std::cin.fail() || amount < 0) {
+            std::cout << "Invalid amount. Please enter a valid number.\n";
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        }
+        else {
+            break;
+        }
+    }
     std::cin.ignore(); // Clear input buffer after numeric input
 
-    std::cout << "Enter transaction category: ";
-    std::getline(std::cin, category);
+    //Ensures Category is not empty
+    do {
+        std::cout << "Enter transaction category: ";
+        std::getline(std::cin, category);
+        if (category.empty()) {
+            std::cout << "Category cannot be empty. Please enter a valid category.\n";
+        }
+    } while (category.empty());
 
     // Capitalize the first letter of the category
     if (!category.empty()) {
@@ -156,9 +272,17 @@ void handleAddTransaction(std::vector<Transaction>& transactions) {
     std::cout << "Transaction added successfully!" << std::endl;
 }
 
+
 int main() {
     std::vector<Transaction> transactions;
     std::string filename = "transactions.csv";
+
+    // Check if file exists before loading
+    std::ifstream fileCheck(filename);
+    if (!fileCheck.is_open()) {
+        std::cout << "Warning: '" << filename << "' does not exist. A new file will be created upon exit.\n";
+    }
+    fileCheck.close();
 
     // Load transactions from file
     loadTransactionsFromFile(transactions, filename);
@@ -167,6 +291,8 @@ int main() {
     do {
         showMainMenu();
         std::cin >> choice;
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');  // Fully clears input buffer
+
 
         switch (choice) {
         case 1:
@@ -185,15 +311,14 @@ int main() {
             handleClearAllTransactions(transactions);
             break;
         case 6:
-            std::cout << "Exiting VaultWise. Goodbye!" << std::endl;
+            std::cout << "Saving transactions...\n";
+            saveTransactionsToFile(transactions, filename);
+            std::cout << "Exiting VaultWise. Goodbye!\n";
             break;
         default:
-            std::cout << "Invalid choice. Please try again." << std::endl;
+            std::cout << "Invalid choice. Please try again.\n";
         }
     } while (choice != 6);
-
-    // Save transactions to file
-    saveTransactionsToFile(transactions, filename);
 
     return 0;
 }
